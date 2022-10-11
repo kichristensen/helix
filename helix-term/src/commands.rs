@@ -4646,16 +4646,22 @@ fn shell_impl(
     cmd: &str,
     input: Option<RopeSlice>,
 ) -> anyhow::Result<(Tendril, bool)> {
-    use std::io::Write;
+    use std::fs::File;
+    use std::io::{Read, Seek, Write};
     use std::process::{Command, Stdio};
     ensure!(!shell.is_empty(), "No shell set");
+
+    let mut tmpfile: File =
+        tempfile::tempfile().map_err(|_| anyhow!("Could not create temporary file"))?;
+    let stdout_file = tmpfile.try_clone()?;
+    let stderr_file = tmpfile.try_clone()?;
 
     let mut process = Command::new(&shell[0]);
     process
         .args(&shell[1..])
         .arg(cmd)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        .stdout(stdout_file)
+        .stderr(stderr_file);
 
     if input.is_some() || cfg!(windows) {
         process.stdin(Stdio::piped());
@@ -4676,23 +4682,12 @@ fn shell_impl(
     }
     let output = process.wait_with_output()?;
 
-    if !output.status.success() {
-        if !output.stderr.is_empty() {
-            let err = String::from_utf8_lossy(&output.stderr).to_string();
-            log::error!("Shell error: {}", err);
-            bail!("Shell error: {}", err);
-        }
-        bail!("Shell command failed");
-    } else if !output.stderr.is_empty() {
-        log::debug!(
-            "Command printed to stderr: {}",
-            String::from_utf8_lossy(&output.stderr).to_string()
-        );
-    }
-
-    let str = std::str::from_utf8(&output.stdout)
-        .map_err(|_| anyhow!("Process did not output valid UTF-8"))?;
-    let tendril = Tendril::from(str);
+    let mut buf = String::new();
+    tmpfile.seek(std::io::SeekFrom::Start(0))?;
+    tmpfile
+        .read_to_string(&mut buf)
+        .map_err(|_| anyhow!("Could not read from redirect file"))?;
+    let tendril = Tendril::from(buf);
     Ok((tendril, output.status.success()))
 }
 

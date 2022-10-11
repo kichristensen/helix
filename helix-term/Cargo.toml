@@ -44,6 +44,8 @@ tokio-stream = "0.1"
 futures-util = { version = "0.3", features = ["std", "async-await"], default-features = false }
 arc-swap = { version = "1.5.1" }
 
+tempfile = "3"
+
 # Logging
 fern = "0.6"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
